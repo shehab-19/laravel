@@ -1,43 +1,43 @@
-# Use the official PHP image as a base
-FROM php:8.2-fpm-alpine
+# Start from the official PHP image with Apache
+FROM php:8.2-apache
 
-# Set the working directory
-WORKDIR /var/www
-
-# Install system dependencies and PHP extensions
-RUN apk add --no-cache \
-    libpng-dev \
-    libjpeg-turbo-dev \
-    libwebp-dev \
-    freetype-dev \
-    oniguruma-dev \
-    bash \
-    curl \
-    git \
-    postgresql-dev \
+# Update package lists and install required system packages and PHP extensions for Laravel
+RUN apt-get update && apt-get install -y \
+    libpng-dev libjpeg-dev libfreetype6-dev libzip-dev git unzip curl \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) gd mbstring pdo pdo_mysql pdo_pgsql
+    && docker-php-ext-install gd pdo pdo_mysql zip
 
-# Install Composer
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+# Download and install Composer, a PHP package manager
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
-# Copy the Laravel app files
+# Enable the Apache rewrite module for Laravel support
+RUN a2enmod rewrite
+
+# Define the working directory inside the container
+WORKDIR /var/www/html
+
+# Copy the Laravel application files into the container
 COPY . .
 
-# Install Composer dependencies without dev packages
-RUN composer install --no-dev --optimize-autoloader
+# Adjust file permissions for Laravel directories and files
+RUN chown -R www-data:www-data /var/www/html \
+    && find /var/www/html -type d -exec chmod 755 {} \; \
+    && find /var/www/html -type f -exec chmod 644 {} \;
 
-# Set permissions for Laravel storage and bootstrap/cache directories
-RUN chown -R www-data:www-data storage bootstrap/cache \
-    && chmod -R 775 storage bootstrap/cache
+# Install Laravel dependencies using Composer
+RUN composer install --no-interaction --optimize-autoloader
 
-# Set environment variables
-ENV APP_ENV=production \
-    APP_DEBUG=false \
-    APP_KEY=your-app-key-here
+# Set up Apache to serve the Laravel public directory
+RUN echo '<VirtualHost *:80>\n\
+    DocumentRoot /var/www/html/public\n\
+    <Directory /var/www/html/public>\n\
+        AllowOverride All\n\
+        Require all granted\n\
+    </Directory>\n\
+</VirtualHost>' > /etc/apache2/sites-available/000-default.conf
 
-# Expose the port for PHP-FPM
-EXPOSE 9000
+# Expose port 80 to allow web traffic
+EXPOSE 80
 
-# Start the PHP-FPM server
-CMD ["php-fpm"]
+# Command to run Apache in the foreground
+CMD ["apache2-foreground"]
