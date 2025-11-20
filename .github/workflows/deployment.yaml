@@ -1,0 +1,92 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: 
+        - "12.x"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate .env file locally
+        run: |
+          echo "Creating .env file..."
+          echo "APP_NAME=Laravel" > .env
+          echo "APP_ENV=production" >> .env
+          echo "APP_DEBUG=false" >> .env
+          echo "APP_URL=http://${{ secrets.SSH_HOST }}" >> .env
+          echo "LOG_CHANNEL=stderr" >> .env
+          
+          # Database Secrets
+          echo "DB_CONNECTION=mysql" >> .env
+          echo "DB_HOST=${{ secrets.DB_HOST }}" >> .env
+          echo "DB_PORT=3306" >> .env
+          echo "DB_DATABASE=${{ secrets.DB_DATABASE }}" >> .env
+          echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" >> .env
+          echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+
+      - name: Deploy to Server
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          # 1. Setup SSH Agent safely
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
+
+          # 2. Compress application files (including the .env we just made)
+          echo "Compressing application files..."
+          # We save to /tmp to ensure we don't get recursive loops if we tar the current dir
+          tar --exclude='.git' --exclude='.github' -czf /tmp/deploy_package.tar.gz .
+
+          # 3. Copy files to server (SCP)
+          echo "Copying files to server..."
+          # Create directory if it doesn't exist
+          ssh -i ~/.ssh/deploy_key $SSH_USER@$SSH_HOST "mkdir -p ~/app/laravel"
+          
+          # Upload the tarball
+          scp -i ~/.ssh/deploy_key /tmp/deploy_package.tar.gz $SSH_USER@$SSH_HOST:~/app/laravel/deploy_package.tar.gz
+
+          # 4. Unpack and Run on Server
+          echo "Connecting to server to run deployment scripts..."
+          ssh -i ~/.ssh/deploy_key $SSH_USER@$SSH_HOST << 'EOF'
+            # Stop script on any error
+            set -e
+            
+            cd ~/app/laravel
+
+            echo "Unpacking new code..."
+            # Overwrite existing files with the new package
+            tar -xzf deploy_package.tar.gz
+            
+            # Remove the tarball to save space
+            rm deploy_package.tar.gz
+
+            echo "Rebuilding containers..."
+            # We can build directly since we have the files
+            docker compose down
+            docker compose up -d --build
+
+            echo "Generating Application Key..."
+            # This writes the key to the container's internal file
+            docker compose exec -T app php artisan key:generate
+            docker compose exec -T app php artisan migrate --force
+
+            echo "Pruning unused images..."
+            docker image prune -f
+            
+            echo "Deployment Complete!"
+          EOF
+
+          # 5. Cleanup local key
+          rm -f ~/.ssh/deploy_key
