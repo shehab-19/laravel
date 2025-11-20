@@ -2,12 +2,13 @@ name: Deploy to Production
 
 on:
   push:
-    branches: [ "12.x" ]
+    branches: 
+        - "12.x"
 
 jobs:
-  deploy:
-    name: Build and Deploy (Push Model)
-    runs-on: ubuntu-latest
+  build-and-deploy:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
     
     steps:
       - name: Checkout code
