@@ -35,7 +35,7 @@ jobs:
         env:
           SSH_HOST: ${{ secrets.EC2_HOST }}
           SSH_USER: ${{ secrets.EC2_USER }}
-          SSH_KEY: ${{ secrets.EC2_KEY }}
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
         run: |
           # 1. Setup SSH Agent safely
           mkdir -p ~/.ssh
