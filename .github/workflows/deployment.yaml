@@ -20,7 +20,7 @@ jobs:
           echo "APP_NAME=Laravel" > .env
           echo "APP_ENV=production" >> .env
           echo "APP_DEBUG=false" >> .env
-          echo "APP_URL=http://${{ secrets.SSH_HOST }}" >> .env
+          echo "APP_URL=http://${{ secrets.EC2_HOST }}" >> .env
           echo "LOG_CHANNEL=stderr" >> .env
           
           # Database Secrets
@@ -33,9 +33,9 @@ jobs:
 
       - name: Deploy to Server
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_HOST: ${{ secrets.EC2_HOST }}
+          SSH_USER: ${{ secrets.EC2_USER }}
+          SSH_KEY: ${{ secrets.EC2_KEY }}
         run: |
           # 1. Setup SSH Agent safely
           mkdir -p ~/.ssh
